@@ -34,7 +34,8 @@ class VehicleState:
         self.eta_seconds = 4920
         self.trip_progress = 0.35
         self.trip_distance_mi = 127.4
-        self.avg_speed_mph = 0.0
+        self.nav_remaining_mi = 12.4
+        self.avg_speed_mph = 65.0
         # Music
         self.music_playing = True
         self.music_track = 0

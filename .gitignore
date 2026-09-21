@@ -11,3 +11,4 @@ venv/
 .venv/
 nohup.out
 rewrite_*.py
+r*.png
