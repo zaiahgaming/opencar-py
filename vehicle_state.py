@@ -10,6 +10,7 @@ class VehicleState:
         self.rpm = 800.0
         self.gear = 0          # 0=P 1=R 2=N 3=D
         self.engine_temp_f = 190.0
+        self.manual_override = False
         # ADAS
         self.acc_active = False
         self.acc_gap = 3        # 1-5 bars

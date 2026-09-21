@@ -58,12 +58,13 @@ def run():
             last_track = track_idx
 
         with STATE._lock:
-            STATE.speed_mph     = speed
-            STATE.rpm           = rpm
-            STATE.gear          = gear
-            STATE.lane_state    = lane
-            STATE.acc_active    = acc
-            STATE.acc_gap       = gap
+            if not getattr(STATE, 'manual_override', False):
+                STATE.speed_mph     = speed
+                STATE.rpm           = rpm
+                STATE.gear          = gear
+                STATE.lane_state    = lane
+                STATE.acc_active    = acc
+                STATE.acc_gap       = gap
             STATE.engine_temp_f = e_temp
             STATE.eta_seconds   = eta
             STATE.trip_progress = prog
