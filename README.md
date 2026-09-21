@@ -1,58 +1,46 @@
 # OpenCar
 
-> **Modern Multi-Surface Automotive UI**  
-> Python · Raylib · Comma 4 Card Aesthetic · commaai/opendbc · CAN Bus · OBD-II · Android Head Units · Comma 3/3X
+> **Modern Multi-Surface Automotive Cockpit & Infotainment Suite**  
+> Web Cockpit (React + Tailwind + Leaflet) · Python Telemetry Bridge · Comma 4 Card Deck · Tesla Model 3 Digital Twin · commaai/opendbc · CAN Bus & OBD-II · Android Aftermarket Displays
 
 [![GitHub Repo](https://img.shields.io/badge/GitHub-zaiahgaming%2Fopencar--py-181717?logo=github)](https://github.com/zaiahgaming/opencar-py)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![Python: 3.10+](https://img.shields.io/badge/Python-3.10%2B-brightgreen.svg)](https://python.org)
+[![Vite 5](https://img.shields.io/badge/Vite-5.4-purple.svg)](https://vitejs.dev)
+[![React: 18](https://img.shields.io/badge/React-18-blue.svg)](https://react.dev)
 [![commaai/opendbc](https://img.shields.io/badge/DBC-commaai%2Fopendbc-black.svg)](https://github.com/commaai/opendbc)
 
 ---
 
-OpenCar is a GPU-accelerated automotive dashboard and infotainment suite inspired by the **comma 4 visual design language** (pure black `#000000`, dark rounded cards `#292929`, Inter typography, active green `#33ab4c`, accent blue `#465bea`, and real high-res Lucide icons).
+OpenCar is a production-grade automotive cockpit that bridges real-time vehicle CAN bus & OBD-II diagnostics directly into a responsive, hardware-accelerated user interface.
 
-It features three complete independent surfaces with full touchscreen and keyboard navigation:
-1. **Instrument Cluster / HUD**: Speedometer (140px bold), tachometer with dynamic color sweep, live road perspective, directional turn indicators, drive mode selector (ECO / NORMAL / SPORT), trip stats, and real-time clock.
-2. **Infotainment Center**: 6-slot icon dock, 2x2 home cards, full-screen music player with real album art & scrubber, dual-zone climate control with tactile `+` / `−` adjustments, contact list, and vehicle settings.
-3. **Rear Seat Entertainment**: Pill tab bar, trip progress, media player, rear dual climate, and interactive playable Pong.
-
----
-
-## Architecture & Data Sources
-
-OpenCar connects to real vehicles through multiple automotive data pipelines:
-
-```
-                  ┌───────────────────────────────────────────────┐
-                  │                   OpenCar                     │
-                  │   [HUD]        [Infotainment]         [Rear]  │
-                  └───────▲───────────────▲───────────────▲───────┘
-                          │               │               │
-                 ┌────────┴───────────────┴───────────────┴────────┐
-                 │                 VehicleState                    │
-                 └───────▲────────────────▲───────────────▲────────┘
-                         │                │               │
-       ┌─────────────────┴────────┐ ┌─────┴───────┐ ┌─────┴──────────────────┐
-       │   commaai/opendbc CAN    │ │   OBD-II    │ │    Openpilot Cereal    │
-       │  (SocketCAN / CANable)   │ │  (ELM327)   │ │      (Comma 3/3X)      │
-       │                          │ │             │ │                        │
-       │ • 60+ vehicle DBC models │ │ • USB Serial│ │ • Native carState      │
-       │ • Toyota, Honda, GM, VW  │ │ • Bluetooth │ │ • radarState lead car  │
-       │ • ISO 15765-4 OBD-on-CAN │ │ • WiFi (TCP)│ │ • GPS Kalman filter    │
-       └──────────────────────────┘ └─────────────┘ └────────────────────────┘
-```
+It features four primary surfaces:
+1. **Instrument Cluster / Comma 3X Onroad HUD**: 3D vision road perspective with openpilot animated spline corridor, dashed lane stripes, 42m lead car radar tracking, `MAX 65 MPH` cruise capsule, bold speed readout, MUTCD `SPEED LIMIT 65` shield, lateral actuator torque gauge, coolant & tachometer readouts, and Euro NCAP attentiveness monitor.
+2. **Tesla Model 3/Y V12 Infotainment Touchscreen**: Clean isometric 3D vehicle digital twin with interactive frunk/trunk/lock triggers, 4-corner TPMS tire pressure monitoring capsules, interactive dark Leaflet map with active GPS routing, floating Comma 4 Bluetooth connected card (with checkmark and circular crimson disconnect button), and a full slide-up dual-zone climate control drawer.
+3. **Rear Passenger Entertainment Display**: Highland-inspired 8-inch rear interface with independent rear climate adjustment, passenger trip progress monitor, Spotify mini-player, and interactive Retro Pong arcade cabinet.
+4. **Split Cockpit Mode**: Dual-pane ultrawide layout placing the driver cluster on the left and full infotainment on the right with zero speedometer occlusion.
 
 ---
 
-## Quick Start
+## Quick Start (Web Automotive Cockpit)
+
+The Web Cockpit runs natively on Linux and on any aftermarket Android head unit or tablet over WiFi/hotspot:
 
 ```bash
 git clone https://github.com/zaiahgaming/opencar-py.git
 cd opencar-py
 pip install -r requirements.txt
 
-# Run simulation mode
+# Launch OpenCar Web Server and open fullscreen browser
+python3 run_web.py --kiosk
+
+# Or run headless on a car computer (Raspberry Pi / Jetson / mini PC)
+python3 run_web.py --no-browser --port 3000
+# Then navigate to http://<CAR_IP>:3000 on your Android dashboard display!
+```
+
+To run the native Raylib/PyRay desktop client:
+```bash
 python3 main.py --surface 1 --width 1920 --height 720
 ```
 

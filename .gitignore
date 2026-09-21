@@ -2,8 +2,8 @@ __pycache__/
 *.pyc
 *.pyo
 *.egg-info/
-dist/
-build/
+/dist/
+/build/
 *.spec
 *.log
 .env
@@ -11,4 +11,6 @@ venv/
 .venv/
 nohup.out
 rewrite_*.py
-r*.png
+/r*.png
+node_modules/
+web/node_modules/

@@ -1,0 +1,44 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer utilities {
+  .glass-card {
+    background: rgba(18, 21, 28, 0.78);
+    backdrop-filter: blur(24px);
+    -webkit-backdrop-filter: blur(24px);
+    border: 1px solid rgba(255, 255, 255, 0.09);
+    box-shadow: 0 16px 36px rgba(0, 0, 0, 0.55), inset 0 1px 0 rgba(255, 255, 255, 0.12);
+  }
+
+  .glass-card-hover {
+    transition: all 0.2s ease-out;
+  }
+  .glass-card-hover:hover {
+    background: rgba(26, 30, 40, 0.85);
+    border-color: rgba(255, 255, 255, 0.18);
+    box-shadow: 0 20px 48px rgba(0, 0, 0, 0.65), inset 0 1px 0 rgba(255, 255, 255, 0.2);
+  }
+
+  .glass-pill {
+    background: rgba(255, 255, 255, 0.06);
+    backdrop-filter: blur(16px);
+    -webkit-backdrop-filter: blur(16px);
+    border: 1px solid rgba(255, 255, 255, 0.09);
+  }
+
+  .glass-pill-active {
+    background: #00E676;
+    color: #06080b;
+    font-weight: 700;
+    box-shadow: 0 0 16px rgba(0, 230, 118, 0.4);
+  }
+
+  .comma-glow {
+    text-shadow: 0 0 12px rgba(0, 230, 118, 0.5);
+  }
+
+  .blue-glow {
+    text-shadow: 0 0 12px rgba(0, 176, 255, 0.5);
+  }
+}
