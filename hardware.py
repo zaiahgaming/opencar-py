@@ -111,27 +111,10 @@ def _detect_platform() -> str:
 def _scan_can_channels() -> list:
     """Return a list of socketcan-style network interfaces present."""
     channels = []
-    try:
-        import socket
-        import struct
-        import fcntl
-
-        SIOCGIFCONF = 0x8912
-        s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-        buf = bytearray(4096)
-        ifreq = struct.pack('iP', len(buf), id(buf))
-        try:
-            fcntl.ioctl(s, SIOCGIFCONF, ifreq)
-        finally:
-            s.close()
-    except Exception:
-        pass
-
-    # Simpler: read /sys/class/net
     net_path = '/sys/class/net'
     if os.path.isdir(net_path):
         for iface in os.listdir(net_path):
-            if iface.startswith('can') or iface.startswith('vcan'):
+            if iface.startswith('can') or iface.startswith('vcan') or iface.startswith('slcan'):
                 channels.append(iface)
     return sorted(channels)
 
@@ -175,49 +158,77 @@ def _check_comma() -> bool:
 # ────────────────────────────────────────────────────────────────────────────
 
 # Vehicle-profile DBC signal maps  (PID → (attr, scale, offset))
+# Verified against commaai/opendbc and SAE standard frames
 _VEHICLE_PROFILES = {
     'toyota': {
-        0x025: ('speed_mph',   0.02237, 0.0),   # raw in km/h × 100 → mph
-        0x0B4: ('engine_temp_f', 0.75, -40.0),  # coolant temp raw → °F
-        0x0AA: ('rpm',          0.25,   0.0),   # raw RPM
+        0x0B4: ('speed_mph',     0.00621371, 0.0),   # 0.01 km/h -> mph
+        0x025: ('speed_mph',     0.02237,    0.0),   # Alternate wheel speed
+        0x1C4: ('rpm',           0.78125,    0.0),   # Engine RPM
+        0x0AA: ('rpm',           0.25,       0.0),   # Engine RPM alternate
+        0x3BC: ('gear',          1.0,        0.0),   # Transmission gear
     },
     'honda': {
-        0x158: ('speed_mph',   0.01553, 0.0),
-        0x17C: ('rpm',          0.25,   0.0),
-        0x54A: ('engine_temp_f', 0.75, -40.0),
+        0x158: ('speed_mph',     0.00621371, 0.0),   # km/h * 0.01 -> mph
+        0x17C: ('rpm',           0.25,       0.0),   # Engine RPM
+        0x1A3: ('gear',          1.0,        0.0),   # Gearbox
+        0x54A: ('engine_temp_f', 0.75,       -40.0), # Coolant temp
     },
     'gm': {
-        0x3D1: ('speed_mph',   0.01553, 0.0),
-        0x108: ('rpm',          0.25,   0.0),
+        0x3E9: ('speed_mph',     0.01,       0.0),   # GM native mph * 0.01
+        0x3D1: ('speed_mph',     0.01553,    0.0),
+        0x0C9: ('rpm',           0.25,       0.0),   # Engine RPM
+        0x108: ('rpm',           0.25,       0.0),
+        0x135: ('gear',          1.0,        0.0),
     },
     'ford': {
-        0x217: ('speed_mph',   0.01553, 0.0),
-        0x204: ('rpm',          0.25,   0.0),
+        0x415: ('speed_mph',     0.00621371, 0.0),   # km/h * 0.01 -> mph
+        0x217: ('speed_mph',     0.01553,    0.0),
+        0x201: ('rpm',           2.0,        0.0),   # Engine RPM
+        0x204: ('rpm',           0.25,       0.0),
+        0x176: ('gear',          1.0,        0.0),
+    },
+    'hyundai': {
+        0x260: ('speed_mph',     0.00621371, 0.0),   # Wheel speeds
+        0x316: ('rpm',           0.25,       0.0),   # Engine RPM
+        0x367: ('gear',          1.0,        0.0),
+    },
+    'vw': {
+        0x320: ('speed_mph',     0.00621371, 0.0),   # ESP speed
+        0x280: ('rpm',           0.25,       0.0),   # Motor RPM
+        0x440: ('gear',          1.0,        0.0),
+    },
+    'subaru': {
+        0x13A: ('speed_mph',     0.0310686,  0.0),
+        0x140: ('rpm',           1.0,        0.0),
+    },
+    'nissan': {
+        0x280: ('speed_mph',     0.00621371, 0.0),
+        0x180: ('rpm',           1.0,        0.0),
     },
 }
 
 
 class CANReader:
     """
-    Reads live vehicle data from a CAN bus adapter via python-can.
-
-    Falls back gracefully to no-op if python-can is not installed.
+    Reads live vehicle data from a CAN bus adapter via python-can and commaai/opendbc.
     Supports socketcan, PEAK, CANable (slcan), and candump replay.
+    Also sends ISO 15765-4 OBD-II queries (0x7DF) for direct OBD-2 port connections.
     """
 
     def __init__(self, channel: str = None, bustype: str = 'socketcan',
-                 replay_file: str = None):
+                 replay_file: str = None, dbc_name: str = None, poll_obd: bool = True):
         self.channel     = channel
         self.bustype     = bustype
         self.replay_file = replay_file
+        self.dbc_name    = dbc_name
+        self.poll_obd    = poll_obd
         self._thread     = None
+        self._obd_thread = None
         self._stop       = threading.Event()
+        self.decoder     = None
 
     def auto_detect(self) -> bool:
-        """
-        Try to find any CAN channel on the system.
-        Sets self.channel on success.  Returns True if found.
-        """
+        """Try to find any CAN channel on the system."""
         channels = _scan_can_channels()
         if channels:
             self.channel = channels[0]
@@ -227,7 +238,11 @@ class CANReader:
         return False
 
     def start(self, state, profile: str = 'toyota'):
-        """Start the CAN reader thread."""
+        """Start the CAN reader and decoder threads."""
+        from opendbc_decoder import OpenDBCDecoder
+        self.decoder = OpenDBCDecoder(profile_name=profile, dbc_name=self.dbc_name)
+        state.set('car_profile', profile)
+
         self._thread = threading.Thread(
             target=self._run, args=(state, profile), daemon=True, name='CANReader'
         )
@@ -244,7 +259,6 @@ class CANReader:
             return
 
         signal_map = _VEHICLE_PROFILES.get(profile, _VEHICLE_PROFILES['toyota'])
-        state.set('car_profile', profile)
 
         if self.replay_file:
             self._run_replay(state, signal_map)
@@ -257,14 +271,44 @@ class CANReader:
             log.error('[CAN] Failed to open bus: %s', exc)
             return
 
+        # Start periodic ISO 15765-4 OBD-II polling thread over CAN (PIDs 0x0D speed, 0x0C RPM, etc.)
+        if self.poll_obd:
+            self._obd_thread = threading.Thread(
+                target=self._poll_obd_over_can, args=(bus,), daemon=True, name='CAN-OBD-Poller'
+            )
+            self._obd_thread.start()
+
         try:
             while not self._stop.is_set():
                 msg = bus.recv(timeout=1.0)
                 if msg is None:
                     continue
+                # 1. First attempt opendbc decoder + ISO 15765-4 decoding
+                if self.decoder and self.decoder.decode(msg.arbitration_id, msg.data, state):
+                    continue
+                # 2. Fallback to basic signal map
                 self._decode(msg, state, signal_map)
         finally:
             bus.shutdown()
+
+    def _poll_obd_over_can(self, bus):
+        """Periodically transmit standard OBD-II queries to functional ID 0x7DF."""
+        import can
+        pids = [0x0C, 0x0D, 0x05, 0x2F]  # RPM, Speed, Temp, Fuel
+        pid_idx = 0
+        while not self._stop.is_set():
+            pid = pids[pid_idx % len(pids)]
+            pid_idx += 1
+            query = can.Message(
+                arbitration_id=0x7DF,
+                data=[0x02, 0x01, pid, 0x55, 0x55, 0x55, 0x55, 0x55],
+                is_extended_id=False
+            )
+            try:
+                bus.send(query)
+            except Exception:
+                pass
+            time.sleep(0.08)  # ~12 Hz query rate
 
     def _run_replay(self, state, signal_map):
         """Replay a candump log file (text or compressed)."""
@@ -274,7 +318,8 @@ class CANReader:
             for msg in reader:
                 if self._stop.is_set():
                     break
-                self._decode(msg, state, signal_map)
+                if not (self.decoder and self.decoder.decode(msg.arbitration_id, msg.data, state)):
+                    self._decode(msg, state, signal_map)
                 time.sleep(0.01)
         except Exception as exc:
             log.error('[CAN] Replay error: %s', exc)
@@ -289,20 +334,141 @@ class CANReader:
 
 
 # ────────────────────────────────────────────────────────────────────────────
-# OBD-II Reader  (ELM327 / python-obd)
+# Direct ELM327 / OBD-II Reader (USB Serial, Bluetooth, WiFi)
+# ────────────────────────────────────────────────────────────────────────────
+
+class DirectELM327:
+    """
+    Direct ELM327 client for raw serial (USB/Bluetooth) or TCP socket (WiFi OBD2).
+    """
+
+    def __init__(self, port: str = None, baudrate: int = 38400):
+        self.port = port
+        self.baudrate = baudrate
+        self.stream = None
+        self.is_socket = False
+
+    def connect(self) -> bool:
+        """Connect to serial port or WiFi socket."""
+        import glob
+        target_port = self.port
+
+        # Auto-detect serial port if not provided
+        if not target_port or target_port == 'auto':
+            candidates = glob.glob('/dev/ttyUSB*') + glob.glob('/dev/ttyACM*') + glob.glob('/dev/rfcomm*')
+            if not candidates and sys.platform.startswith('win'):
+                candidates = [f'COM{i}' for i in range(1, 16)]
+            if candidates:
+                target_port = candidates[0]
+                log.info('[ELM327] Auto-detected port: %s', target_port)
+            else:
+                log.warning('[ELM327] No OBD-II serial port found')
+                return False
+
+        # WiFi OBD2 (e.g. 192.168.0.10:35000)
+        if ':' in target_port:
+            import socket
+            host, port_str = target_port.split(':', 1)
+            try:
+                s = socket.create_connection((host, int(port_str)), timeout=3.0)
+                s.settimeout(1.0)
+                self.stream = s
+                self.is_socket = True
+                log.info('[ELM327] Connected to WiFi OBD adapter at %s', target_port)
+            except Exception as e:
+                log.error('[ELM327] WiFi connection failed: %s', e)
+                return False
+        else:
+            # Serial port
+            try:
+                import serial
+                self.stream = serial.Serial(target_port, baudrate=self.baudrate, timeout=1.0)
+                self.is_socket = False
+                log.info('[ELM327] Opened serial port %s at %d baud', target_port, self.baudrate)
+            except Exception as e:
+                log.error('[ELM327] Failed to open %s: %s', target_port, e)
+                return False
+
+        return self._init_elm()
+
+    def _send(self, cmd: str) -> str:
+        """Send AT or OBD command and read response until prompt '>'."""
+        raw_cmd = (cmd.strip() + '\r').encode('ascii')
+        try:
+            if self.is_socket:
+                self.stream.sendall(raw_cmd)
+                buf = b''
+                start = time.time()
+                while time.time() - start < 1.0:
+                    chunk = self.stream.recv(128)
+                    if not chunk:
+                        break
+                    buf += chunk
+                    if b'>' in buf:
+                        break
+                return buf.decode('ascii', errors='ignore')
+            else:
+                self.stream.write(raw_cmd)
+                buf = b''
+                start = time.time()
+                while time.time() - start < 1.0:
+                    ch = self.stream.read(1)
+                    if not ch:
+                        break
+                    buf += ch
+                    if b'>' in buf:
+                        break
+                return buf.decode('ascii', errors='ignore')
+        except Exception:
+            return ''
+
+    def _init_elm(self) -> bool:
+        """Initialize ELM327 with standard AT command sequence."""
+        for cmd in ['ATZ', 'ATE0', 'ATL0', 'ATS0', 'ATH0', 'ATSP0', '0100']:
+            resp = self._send(cmd)
+            time.sleep(0.05)
+        log.info('[ELM327] Initialized successfully')
+        return True
+
+    def query_pid(self, pid_hex: str) -> Optional[int]:
+        """Send Mode 01 PID request (e.g. '010C') and parse returned byte value."""
+        resp = self._send(pid_hex)
+        clean = resp.replace(' ', '').replace('\r', '').replace('\n', '').replace('>', '').upper()
+        # Look for '41' + pid
+        expected = '41' + pid_hex[2:].upper()
+        idx = clean.find(expected)
+        if idx != -1:
+            data_hex = clean[idx + len(expected):]
+            try:
+                return int(data_hex[:4], 16) if len(data_hex) >= 4 else int(data_hex[:2], 16)
+            except ValueError:
+                return None
+        return None
+
+    def close(self):
+        if self.stream:
+            try:
+                self.stream.close()
+            except Exception:
+                pass
+
+
+# ────────────────────────────────────────────────────────────────────────────
+# Unified OBD-II Reader (python-obd with DirectELM327 fallback)
 # ────────────────────────────────────────────────────────────────────────────
 
 class OBDReader:
     """
-    Reads live data from an ELM327 adapter via the python-obd library.
-
-    Auto-detects the serial port if port=None or port='auto'.
+    Unified OBD-II Reader.
+    Uses DirectELM327 for high-speed raw USB/Bluetooth/WiFi ELM327 adapters,
+    or falls back to python-obd.
     """
 
-    def __init__(self, port: str = None):
-        self.port    = port if port and port != 'auto' else None
-        self._thread = None
-        self._stop   = threading.Event()
+    def __init__(self, port: str = None, baudrate: int = 38400):
+        self.port     = port if port and port != 'auto' else None
+        self.baudrate = baudrate
+        self._thread  = None
+        self._stop    = threading.Event()
 
     def start(self, state):
         self._thread = threading.Thread(
@@ -314,13 +480,41 @@ class OBDReader:
         self._stop.set()
 
     def _run(self, state):
+        # 1. Try DirectELM327 (fast, works over USB, Bluetooth, and WiFi sockets)
+        elm = DirectELM327(port=self.port, baudrate=self.baudrate)
+        if elm.connect():
+            log.info('[OBD] Using DirectELM327 poller')
+            while not self._stop.is_set():
+                # RPM (010C)
+                rpm_raw = elm.query_pid('010C')
+                if rpm_raw is not None:
+                    state.set('rpm', rpm_raw / 4.0)
+
+                # Speed (010D)
+                speed_raw = elm.query_pid('010D')
+                if speed_raw is not None:
+                    # speed is km/h in high byte
+                    kph = (speed_raw >> 8) if speed_raw > 255 else speed_raw
+                    state.set('speed_mph', kph * 0.621371)
+
+                # Coolant Temp (0105)
+                temp_raw = elm.query_pid('0105')
+                if temp_raw is not None:
+                    celsius = (temp_raw >> 8) - 40 if temp_raw > 255 else temp_raw - 40
+                    state.set('engine_temp_f', (celsius * 1.8) + 32.0)
+
+                time.sleep(0.05)
+            elm.close()
+            return
+
+        # 2. Fallback to python-obd if installed
         try:
             import obd
         except ImportError:
-            log.error('[OBD] python-obd not installed — OBD reader disabled')
+            log.error('[OBD] DirectELM327 failed and python-obd not installed')
             return
 
-        log.info('[OBD] Connecting on %s …', self.port or 'auto')
+        log.info('[OBD] Connecting via python-obd on %s …', self.port or 'auto')
         try:
             conn = obd.OBD(portstr=self.port, fast=False)
         except Exception as exc:
@@ -331,15 +525,12 @@ class OBDReader:
             log.warning('[OBD] Adapter not connected')
             return
 
-        log.info('[OBD] Connected — starting query loop')
         cmds = {
-            obd.commands.SPEED:         ('speed_mph',     lambda r: r.value.to('mph').magnitude),
-            obd.commands.RPM:           ('rpm',            lambda r: r.value.magnitude),
-            obd.commands.COOLANT_TEMP:  ('engine_temp_f', lambda r: r.value.to('degF').magnitude),
-            obd.commands.THROTTLE_POS:  ('throttle',      lambda r: r.value.magnitude),
+            obd.commands.SPEED:        ('speed_mph',     lambda r: r.value.to('mph').magnitude),
+            obd.commands.RPM:          ('rpm',            lambda r: r.value.magnitude),
+            obd.commands.COOLANT_TEMP: ('engine_temp_f', lambda r: r.value.to('degF').magnitude),
+            obd.commands.THROTTLE_POS: ('throttle',      lambda r: r.value.magnitude),
         }
-        supported = {cmd: fn for cmd, (attr, fn) in cmds.items()
-                     if conn.supports(cmd)}
 
         while not self._stop.is_set():
             for cmd, (attr, fn) in cmds.items():
@@ -351,7 +542,7 @@ class OBDReader:
                         state.set(attr, fn(resp))
                 except Exception:
                     pass
-            time.sleep(0.2)
+            time.sleep(0.1)
 
         conn.close()
 

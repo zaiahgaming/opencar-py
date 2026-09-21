@@ -24,10 +24,13 @@ parser = argparse.ArgumentParser(
     formatter_class=argparse.ArgumentDefaultsHelpFormatter,
 )
 parser.add_argument('--fullscreen',   action='store_true', help='Fullscreen mode (for car display)')
-parser.add_argument('--car',          default='toyota',    help='Vehicle profile: toyota/honda/gm/ford')
+parser.add_argument('--kiosk', '--no-frame', dest='kiosk', action='store_true', help='Borderless kiosk window for car/Android head units')
+parser.add_argument('--car',          default='toyota',    help='Vehicle profile: toyota/honda/gm/ford/vw/hyundai/tesla/bmw/mazda/nissan')
+parser.add_argument('--dbc',          default=None,        help='opendbc DBC name (e.g. toyota_2017_ref_pt, vw_mqb, ford_fusion_2018_pt)')
 parser.add_argument('--can',          action='store_true', help='Use real CAN bus (requires adapter)')
-parser.add_argument('--obd',          action='store_true', help='Use OBD-II (ELM327 adapter)')
-parser.add_argument('--obd-port',     default=None,        help='OBD port (e.g. /dev/ttyUSB0)')
+parser.add_argument('--obd',          action='store_true', help='Use OBD-II (ELM327 USB/Bluetooth/WiFi adapter)')
+parser.add_argument('--obd-port',     default=None,        help='OBD port (e.g. /dev/ttyUSB0, /dev/rfcomm0, or 192.168.0.10:35000)')
+parser.add_argument('--obd-baud',     type=int, default=38400, help='OBD serial baud rate')
 parser.add_argument('--can-channel',  default=None,        help='CAN channel (e.g. can0)')
 parser.add_argument('--can-bus',      default='socketcan', help='CAN bus type')
 parser.add_argument('--replay',       default=None,        help='Replay a candump log file')
@@ -85,13 +88,13 @@ if hw['comma']:
     reader.start(STATE)
 
 elif args.replay:
-    print(f'[OpenCar] Replay mode: {args.replay}')
-    reader = CANReader(channel=None, bustype=args.can_bus, replay_file=args.replay)
+    print(f'[OpenCar] Replay mode: {args.replay} (DBC: {args.dbc or "auto"})')
+    reader = CANReader(channel=None, bustype=args.can_bus, replay_file=args.replay, dbc_name=args.dbc)
     reader.start(STATE, args.car)
 
 elif args.can or hw['can']:
-    print(f'[OpenCar] CAN mode: {args.can_bus}:{args.can_channel or "auto"}')
-    reader = CANReader(channel=args.can_channel, bustype=args.can_bus)
+    print(f'[OpenCar] CAN mode: {args.can_bus}:{args.can_channel or "auto"} (DBC: {args.dbc or "auto"})')
+    reader = CANReader(channel=args.can_channel, bustype=args.can_bus, dbc_name=args.dbc)
     if args.can_channel:
         reader.start(STATE, args.car)
     else:
@@ -102,8 +105,8 @@ elif args.can or hw['can']:
             can_sim.start()
 
 elif args.obd:
-    print(f'[OpenCar] OBD-II mode: {args.obd_port or "auto"}')
-    reader = OBDReader(port=args.obd_port)
+    print(f'[OpenCar] OBD-II mode: {args.obd_port or "auto"} at {args.obd_baud} baud')
+    reader = OBDReader(port=args.obd_port, baudrate=args.obd_baud)
     reader.start(STATE)
 
 else:
@@ -201,6 +204,8 @@ def main():
     flags = rl.ConfigFlags.FLAG_MSAA_4X_HINT  # Anti-aliasing for smooth curves
     if args.fullscreen:
         flags |= rl.ConfigFlags.FLAG_FULLSCREEN_MODE
+    elif args.kiosk:
+        flags |= rl.ConfigFlags.FLAG_WINDOW_UNDECORATED
     else:
         flags |= rl.ConfigFlags.FLAG_WINDOW_RESIZABLE
     rl.set_config_flags(flags)

@@ -73,6 +73,16 @@ class InfoSurface:
                 iy = y + tab_h/2 - (tex.height * scale) / 2
                 rl.draw_texture_ex(tex, rl.Vector2(ix, iy), 0.0, scale, tint)
                 
+        # Touch / Click input handling
+        clicked = rl.is_mouse_button_pressed(rl.MouseButton.MOUSE_BUTTON_LEFT)
+        mouse = rl.get_mouse_position()
+
+        # Sidebar touch
+        if clicked and mouse.x < 80:
+            app_idx = int(mouse.y / (H / 6))
+            if 0 <= app_idx < 6:
+                state.infotainment_app = app_idx
+
         # Content Area
         cx = 80
         cy = 0
@@ -80,29 +90,33 @@ class InfoSurface:
         ch = H - 60 # leaving 60 for bottom bar
         
         if state.infotainment_app == 0:
-            self._render_home(state, cx, cy, cw, ch)
+            self._render_home(state, cx, cy, cw, ch, mouse, clicked)
         elif state.infotainment_app == 1:
-            self._render_nav(state, cx, cy, cw, ch)
+            self._render_nav(state, cx, cy, cw, ch, mouse, clicked)
         elif state.infotainment_app == 2:
-            self._render_music(state, cx, cy, cw, ch)
+            self._render_music(state, cx, cy, cw, ch, mouse, clicked)
         elif state.infotainment_app == 3:
-            self._render_climate(state, cx, cy, cw, ch)
+            self._render_climate(state, cx, cy, cw, ch, mouse, clicked)
         elif state.infotainment_app == 4:
-            self._render_phone(state, cx, cy, cw, ch)
+            self._render_phone(state, cx, cy, cw, ch, mouse, clicked)
         elif state.infotainment_app == 5:
-            self._render_settings(state, cx, cy, cw, ch)
+            self._render_settings(state, cx, cy, cw, ch, mouse, clicked)
             
         # Bottom status bar
         self._render_bottom_bar(state, W, H)
 
-    def _render_home(self, state, cx, cy, cw, ch):
+    def _render_home(self, state, cx, cy, cw, ch, mouse, clicked):
         gap = 16
         card_w1 = int((cw - gap * 3) * 0.55)
         card_w2 = cw - gap * 3 - card_w1
         card_h = (ch - gap * 3) // 2
         
-        # NOW PLAYING
-        self._draw_card(cx + gap, cy + gap, card_w1, card_h)
+        # 1. NOW PLAYING Card
+        rect_music = rl.Rectangle(cx + gap, cy + gap, card_w1, card_h)
+        self._draw_card(rect_music.x, rect_music.y, rect_music.width, rect_music.height)
+        if clicked and rl.check_collision_point_rec(mouse, rect_music):
+            state.infotainment_app = 2  # Open Music app
+            
         rl.draw_text_ex(self.fonts['xs'], "NOW PLAYING", rl.Vector2(cx + gap + 32, cy + gap + 32), self.fonts['xs'].baseSize, 0, self.gray_label)
         
         art_size = card_h - 64 - 16
@@ -122,25 +136,37 @@ class InfoSurface:
         rl.draw_text_ex(self.fonts['blg'], state.music_title, rl.Vector2(title_x, title_y), self.fonts['blg'].baseSize, 0, self.white)
         rl.draw_text_ex(self.fonts['md'], state.music_artist, rl.Vector2(title_x, title_y + 60), self.fonts['md'].baseSize, 0, self.gray_text)
         
-        # NAV
-        self._draw_card(cx + gap*2 + card_w1, cy + gap, card_w2, card_h)
+        # 2. NAVIGATION Card
+        rect_nav = rl.Rectangle(cx + gap*2 + card_w1, cy + gap, card_w2, card_h)
+        self._draw_card(rect_nav.x, rect_nav.y, rect_nav.width, rect_nav.height)
+        if clicked and rl.check_collision_point_rec(mouse, rect_nav):
+            state.infotainment_app = 1  # Open Nav app
+            
         rl.draw_text_ex(self.fonts['xs'], "NAVIGATION", rl.Vector2(cx + gap*2 + card_w1 + 32, cy + gap + 32), self.fonts['xs'].baseSize, 0, self.gray_label)
         rl.draw_text_ex(self.fonts['blg'], getattr(state, 'destination', "Downtown"), rl.Vector2(cx + gap*2 + card_w1 + 32, cy + gap + 80), self.fonts['blg'].baseSize, 0, self.white)
         rl.draw_text_ex(self.fonts['md'], "Continue on US-101", rl.Vector2(cx + gap*2 + card_w1 + 32, cy + gap + 140), self.fonts['md'].baseSize, 0, self.gray_text)
         rl.draw_text_ex(self.fonts['sm'], "ETA: 14 min", rl.Vector2(cx + gap*2 + card_w1 + 32, cy + gap + 190), self.fonts['sm'].baseSize, 0, self.green)
         
-        # CLIMATE
-        self._draw_card(cx + gap, cy + gap*2 + card_h, card_w1, card_h)
+        # 3. CLIMATE Card
+        rect_clim = rl.Rectangle(cx + gap, cy + gap*2 + card_h, card_w1, card_h)
+        self._draw_card(rect_clim.x, rect_clim.y, rect_clim.width, rect_clim.height)
+        if clicked and rl.check_collision_point_rec(mouse, rect_clim):
+            state.infotainment_app = 3  # Open Climate app
+            
         rl.draw_text_ex(self.fonts['xs'], "CLIMATE", rl.Vector2(cx + gap + 32, cy + gap*2 + card_h + 32), self.fonts['xs'].baseSize, 0, self.gray_label)
         rl.draw_text_ex(self.fonts['xl'], f"{int(state.driver_temp_f)}°", rl.Vector2(cx + gap + 32, cy + gap*2 + card_h + 80), self.fonts['xl'].baseSize, 0, self.white)
         
-        # VEHICLE
-        self._draw_card(cx + gap*2 + card_w1, cy + gap*2 + card_h, card_w2, card_h)
+        # 4. VEHICLE Card
+        rect_veh = rl.Rectangle(cx + gap*2 + card_w1, cy + gap*2 + card_h, card_w2, card_h)
+        self._draw_card(rect_veh.x, rect_veh.y, rect_veh.width, rect_veh.height)
+        if clicked and rl.check_collision_point_rec(mouse, rect_veh):
+            state.infotainment_app = 5  # Open Settings
+            
         rl.draw_text_ex(self.fonts['xs'], "VEHICLE", rl.Vector2(cx + gap*2 + card_w1 + 32, cy + gap*2 + card_h + 32), self.fonts['xs'].baseSize, 0, self.gray_label)
         rl.draw_text_ex(self.fonts['blg'], str(state.car_profile).capitalize(), rl.Vector2(cx + gap*2 + card_w1 + 32, cy + gap*2 + card_h + 80), self.fonts['blg'].baseSize, 0, self.white)
         rl.draw_text_ex(self.fonts['md'], "All Systems OK", rl.Vector2(cx + gap*2 + card_w1 + 32, cy + gap*2 + card_h + 140), self.fonts['md'].baseSize, 0, self.green)
 
-    def _render_music(self, state, cx, cy, cw, ch):
+    def _render_music(self, state, cx, cy, cw, ch, mouse, clicked):
         art_size = int(cw * 0.4)
         if art_size > ch - 64: art_size = ch - 64
         
@@ -165,79 +191,158 @@ class InfoSurface:
         # Progress bar
         bar_w = cw - (info_x - cx) - 64
         bar_y = info_y + 200
+        bar_rect = rl.Rectangle(info_x, bar_y - 10, bar_w, 32)
+        if clicked and rl.check_collision_point_rec(mouse, bar_rect):
+            state.music_progress = max(0.0, min(1.0, (mouse.x - info_x) / bar_w))
+            
         rl.draw_rectangle_rounded(rl.Rectangle(info_x, bar_y, bar_w, 12), 1.0, 32, self.card_bg)
         prog_w = int(bar_w * state.music_progress)
         rl.draw_rectangle_rounded(rl.Rectangle(info_x, bar_y, prog_w, 12), 1.0, 32, self.blue)
         rl.draw_circle(int(info_x + prog_w), int(bar_y + 6), 16, self.white)
         
-        # Transport
+        # Transport controls
         bx = info_x + bar_w/2 - 120 - 24
         by = bar_y + 60
-        for i, icon in enumerate(["skip-back_white.png", "pause_white.png" if state.music_playing else "play_white.png", "skip-forward_white.png"]):
-            rl.draw_rectangle_rounded(rl.Rectangle(bx + i*(80+24), by, 80, 80), 0.35, 32, self.card_bg)
+        btn_icons = ["skip-back_white.png", "pause_white.png" if state.music_playing else "play_white.png", "skip-forward_white.png"]
+        for i, icon in enumerate(btn_icons):
+            btn_rect = rl.Rectangle(bx + i*(80+24), by, 80, 80)
+            is_hover = rl.check_collision_point_rec(mouse, btn_rect)
+            bg_col = rl.Color(60, 60, 60, 255) if is_hover else self.card_bg
+            rl.draw_rectangle_rounded(btn_rect, 0.35, 32, bg_col)
+            
+            if clicked and is_hover:
+                if i == 0:   # Prev
+                    state.music_track = (state.music_track - 1) % len(_TRACKS)
+                    state.music_artist, state.music_title = _TRACKS[state.music_track]
+                    state.music_progress = 0.0
+                elif i == 1: # Play/Pause
+                    state.music_playing = not state.music_playing
+                elif i == 2: # Next
+                    state.music_track = (state.music_track + 1) % len(_TRACKS)
+                    state.music_artist, state.music_title = _TRACKS[state.music_track]
+                    state.music_progress = 0.0
+                    
             tex = self.icons.get(icon)
             if tex and tex.id > 0:
                 scale = 32.0 / max(tex.width, 1)
-                ix = bx + i*(80+24) + 40 - (tex.width * scale) / 2
-                iy = by + 40 - (tex.height * scale) / 2
+                ix = btn_rect.x + 40 - (tex.width * scale) / 2
+                iy = btn_rect.y + 40 - (tex.height * scale) / 2
                 rl.draw_texture_ex(tex, rl.Vector2(ix, iy), 0.0, scale, self.white)
 
-    def _render_climate(self, state, cx, cy, cw, ch):
+    def _render_climate(self, state, cx, cy, cw, ch, mouse, clicked):
         gap = 32
         card_w = (cw - gap*3) // 2
         card_h = ch - 160
         
-        # Driver
+        # ── Driver Card ───────────────────────────────────────────────────────
         self._draw_card(cx + gap, cy + gap, card_w, card_h)
         lbl_size = rl.measure_text_ex(self.fonts['sm'], "DRIVER", self.fonts['sm'].baseSize, 0)
         rl.draw_text_ex(self.fonts['sm'], "DRIVER", rl.Vector2(cx + gap + card_w/2 - lbl_size.x/2, cy + gap + 32), self.fonts['sm'].baseSize, 0, self.gray_text)
         
         temp_txt = f"{int(state.driver_temp_f)}°"
         t_size = rl.measure_text_ex(self.fonts['bxl'], temp_txt, self.fonts['bxl'].baseSize, 0)
-        rl.draw_text_ex(self.fonts['bxl'], temp_txt, rl.Vector2(cx + gap + card_w/2 - t_size.x/2, cy + gap + card_h/2 - t_size.y/2), self.fonts['bxl'].baseSize, 0, self.white)
+        center_x = cx + gap + card_w/2
+        center_y = cy + gap + card_h/2
+        rl.draw_text_ex(self.fonts['bxl'], temp_txt, rl.Vector2(center_x - t_size.x/2, center_y - t_size.y/2), self.fonts['bxl'].baseSize, 0, self.white)
         
-        # Pass
-        self._draw_card(cx + gap*2 + card_w, cy + gap, card_w, card_h)
+        # Driver Minus & Plus Buttons
+        btn_minus_d = rl.Rectangle(center_x - 180, center_y - 36, 72, 72)
+        btn_plus_d  = rl.Rectangle(center_x + 108, center_y - 36, 72, 72)
+        
+        rl.draw_rectangle_rounded(btn_minus_d, 0.5, 32, rl.Color(60, 60, 60, 255))
+        rl.draw_rectangle_rounded(btn_plus_d,  0.5, 32, rl.Color(60, 60, 60, 255))
+        rl.draw_text_ex(self.fonts['blg'], "−", rl.Vector2(btn_minus_d.x + 24, btn_minus_d.y + 12), self.fonts['blg'].baseSize, 0, self.white)
+        rl.draw_text_ex(self.fonts['blg'], "+", rl.Vector2(btn_plus_d.x + 22,  btn_plus_d.y + 12), self.fonts['blg'].baseSize, 0, self.white)
+        
+        if clicked:
+            if rl.check_collision_point_rec(mouse, btn_minus_d):
+                state.driver_temp_f = max(60, state.driver_temp_f - 1)
+            elif rl.check_collision_point_rec(mouse, btn_plus_d):
+                state.driver_temp_f = min(85, state.driver_temp_f + 1)
+        
+        # ── Passenger Card ────────────────────────────────────────────────────
+        pass_card_x = cx + gap*2 + card_w
+        self._draw_card(pass_card_x, cy + gap, card_w, card_h)
         lbl_size = rl.measure_text_ex(self.fonts['sm'], "PASSENGER", self.fonts['sm'].baseSize, 0)
-        rl.draw_text_ex(self.fonts['sm'], "PASSENGER", rl.Vector2(cx + gap*2 + card_w + card_w/2 - lbl_size.x/2, cy + gap + 32), self.fonts['sm'].baseSize, 0, self.gray_text)
+        rl.draw_text_ex(self.fonts['sm'], "PASSENGER", rl.Vector2(pass_card_x + card_w/2 - lbl_size.x/2, cy + gap + 32), self.fonts['sm'].baseSize, 0, self.gray_text)
         
-        temp_txt = f"{int(getattr(state, 'pass_temp_f', 70))}°"
-        t_size = rl.measure_text_ex(self.fonts['bxl'], temp_txt, self.fonts['bxl'].baseSize, 0)
-        rl.draw_text_ex(self.fonts['bxl'], temp_txt, rl.Vector2(cx + gap*2 + card_w + card_w/2 - t_size.x/2, cy + gap + card_h/2 - t_size.y/2), self.fonts['bxl'].baseSize, 0, self.white)
+        p_temp = int(getattr(state, 'pass_temp_f', 70))
+        temp_txt_p = f"{p_temp}°"
+        t_size_p = rl.measure_text_ex(self.fonts['bxl'], temp_txt_p, self.fonts['bxl'].baseSize, 0)
+        p_center_x = pass_card_x + card_w/2
+        rl.draw_text_ex(self.fonts['bxl'], temp_txt_p, rl.Vector2(p_center_x - t_size_p.x/2, center_y - t_size_p.y/2), self.fonts['bxl'].baseSize, 0, self.white)
+        
+        # Passenger Minus & Plus Buttons
+        btn_minus_p = rl.Rectangle(p_center_x - 180, center_y - 36, 72, 72)
+        btn_plus_p  = rl.Rectangle(p_center_x + 108, center_y - 36, 72, 72)
+        
+        rl.draw_rectangle_rounded(btn_minus_p, 0.5, 32, rl.Color(60, 60, 60, 255))
+        rl.draw_rectangle_rounded(btn_plus_p,  0.5, 32, rl.Color(60, 60, 60, 255))
+        rl.draw_text_ex(self.fonts['blg'], "−", rl.Vector2(btn_minus_p.x + 24, btn_minus_p.y + 12), self.fonts['blg'].baseSize, 0, self.white)
+        rl.draw_text_ex(self.fonts['blg'], "+", rl.Vector2(btn_plus_p.x + 22,  btn_plus_p.y + 12), self.fonts['blg'].baseSize, 0, self.white)
+        
+        if clicked:
+            if rl.check_collision_point_rec(mouse, btn_minus_p):
+                state.pass_temp_f = max(60, p_temp - 1)
+            elif rl.check_collision_point_rec(mouse, btn_plus_p):
+                state.pass_temp_f = min(85, p_temp + 1)
 
-        # Bottom pills
+        # ── Mode Toggle Pills ─────────────────────────────────────────────────
         py = cy + gap + card_h + 32
+        pill_w = 150
+        pill_gap = 20
+        total_pills_w = 4 * pill_w + 3 * pill_gap
+        pills_start_x = cx + (cw - total_pills_w) / 2
+        
         for i, lbl in enumerate(["A/C", "HEAT", "DEF", "SYNC"]):
-            px = cx + gap + i*(140 + 24)
+            px = pills_start_x + i * (pill_w + pill_gap)
+            pill_rect = rl.Rectangle(px, py, pill_w, 64)
+            
             is_on = getattr(state, lbl.lower().replace("/","")+"_on", False)
             if lbl == "A/C": is_on = state.ac_on
             
+            if clicked and rl.check_collision_point_rec(mouse, pill_rect):
+                if lbl == "A/C":
+                    state.ac_on = not state.ac_on
+                elif lbl == "HEAT":
+                    state.heat_on = not getattr(state, 'heat_on', False)
+                elif lbl == "DEF":
+                    state.def_on = not getattr(state, 'def_on', False)
+                elif lbl == "SYNC":
+                    state.pass_temp_f = state.driver_temp_f
+                is_on = not is_on
+                
             bg = self.green if is_on else self.dark_gray
-            fg = self.pure_black if is_on else self.gray_text
+            fg = self.pure_black if is_on else self.white
             
-            rl.draw_rectangle_rounded(rl.Rectangle(px, py, 140, 64), 0.5, 32, bg)
+            rl.draw_rectangle_rounded(pill_rect, 0.5, 32, bg)
             l_size = rl.measure_text_ex(self.fonts['bmd'], lbl, self.fonts['bmd'].baseSize, 0)
-            rl.draw_text_ex(self.fonts['bmd'], lbl, rl.Vector2(px + 70 - l_size.x/2, py + 32 - l_size.y/2), self.fonts['bmd'].baseSize, 0, fg)
+            rl.draw_text_ex(self.fonts['bmd'], lbl, rl.Vector2(px + pill_w/2 - l_size.x/2, py + 32 - l_size.y/2), self.fonts['bmd'].baseSize, 0, fg)
 
-    def _render_phone(self, state, cx, cy, cw, ch):
+    def _render_phone(self, state, cx, cy, cw, ch, mouse, clicked):
         gap = 16
         for i, (name, number) in enumerate(_CONTACTS):
             ry = cy + gap + i*(80 + gap)
-            self._draw_card(cx + gap, ry, cw - gap*2, 80)
+            rect = rl.Rectangle(cx + gap, ry, cw - gap*2, 80)
+            self._draw_card(rect.x, rect.y, rect.width, rect.height)
             rl.draw_text_ex(self.fonts['blg'], name, rl.Vector2(cx + gap + 32, ry + 16), self.fonts['blg'].baseSize, 0, self.white)
             rl.draw_text_ex(self.fonts['md'], number, rl.Vector2(cx + gap + cw/2, ry + 24), self.fonts['md'].baseSize, 0, self.gray_text)
 
-    def _render_settings(self, state, cx, cy, cw, ch):
+    def _render_settings(self, state, cx, cy, cw, ch, mouse, clicked):
         gap = 16
         for i, lbl in enumerate(_SETTINGS_LABELS):
             ry = cy + gap + i*(80 + gap)
-            self._draw_card(cx + gap, ry, cw - gap*2, 80)
+            rect = rl.Rectangle(cx + gap, ry, cw - gap*2, 80)
+            self._draw_card(rect.x, rect.y, rect.width, rect.height)
+            if clicked and rl.check_collision_point_rec(mouse, rect):
+                self.focused_setting = i
+                
             if i == self.focused_setting:
-                rl.draw_rectangle_rounded_lines_ex(rl.Rectangle(cx + gap, ry, cw - gap*2, 80), 0.35, 32, 2.0, self.green)
+                rl.draw_rectangle_rounded_lines_ex(rect, 0.35, 32, 2.0, self.green)
             
             rl.draw_text_ex(self.fonts['blg'], lbl, rl.Vector2(cx + gap + 32, ry + 16), self.fonts['blg'].baseSize, 0, self.white)
 
-    def _render_nav(self, state, cx, cy, cw, ch):
+    def _render_nav(self, state, cx, cy, cw, ch, mouse, clicked):
         map_w = int(cw * 0.7)
         rl.draw_rectangle(int(cx), int(cy), map_w, int(ch), self.dark_gray)
         

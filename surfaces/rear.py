@@ -86,9 +86,16 @@ class RearSurface:
         total_w = len(self.tabs) * tab_w + (len(self.tabs) - 1) * gap
         start_x = (w - total_w) / 2
         
+        # Touch / Click tab selection
+        clicked = rl.is_mouse_button_pressed(rl.MouseButton.MOUSE_BUTTON_LEFT)
+        mouse = rl.get_mouse_position()
+        
         for i, tab in enumerate(self.tabs):
             x = start_x + i * (tab_w + gap)
             rect = rl.Rectangle(x, tab_y, tab_w, tab_height)
+            if clicked and rl.check_collision_point_rec(mouse, rect):
+                self.active_tab = i
+                
             if i == self.active_tab:
                 bg = rl.Color(51, 171, 76, 255) # #33ab4c
                 font = self.fonts.get('bmd', self.fonts.get('md', rl.get_font_default()))
@@ -107,6 +114,11 @@ class RearSurface:
 
         app_area_y = tab_y + tab_height + 32
         app_area_h = h - app_area_y - 32
+
+        # Touch paddle control in Pong
+        if self.active_tab == 3 and rl.is_mouse_button_down(rl.MouseButton.MOUSE_BUTTON_LEFT):
+            if mouse.x < w * 0.35:
+                self.pong.p1_pos = max(0.0, min(float(h - self.pong.PAD_H), float(mouse.y - self.pong.PAD_H / 2)))
         
         if self.active_tab == 0:
             self._render_home(w, h, app_area_y, app_area_h, state, theme)

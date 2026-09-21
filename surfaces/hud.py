@@ -57,6 +57,10 @@ class HUDSurface:
         center_w = w * 0.44
         right_w = w * 0.28
         
+        # Touch / Click input
+        clicked = rl.is_mouse_button_pressed(rl.MouseButton.MOUSE_BUTTON_LEFT)
+        mouse = rl.get_mouse_position()
+
         # Center section - Speed and Road
         self._draw_center_panel(state, left_w, top_h, center_w, h - top_h - bottom_h, theme)
         
@@ -66,11 +70,11 @@ class HUDSurface:
         # Right section - Nav and Media
         self._draw_right_panel(state, left_w + center_w, top_h, right_w, h - top_h - bottom_h, theme)
         
-        # Top strip
-        self._draw_top_strip(state, w, top_h, theme)
+        # Top strip (telltales & turn signals)
+        self._draw_top_strip(state, w, top_h, theme, mouse=mouse, clicked=clicked)
         
-        # Bottom strip
-        self._draw_bottom_strip(state, 0, h - bottom_h, w, bottom_h, theme)
+        # Bottom strip (fuel, modes, trip, clock)
+        self._draw_bottom_strip(state, 0, h - bottom_h, w, bottom_h, theme, mouse=mouse, clicked=clicked)
 
     def _draw_left_panel(self, state, x, y, w, h, theme):
         pad = 24
@@ -214,7 +218,7 @@ class HUDSurface:
         rl.draw_text_ex(self.fonts['md'], artist, rl.Vector2(mx, my), self.fonts['md'].baseSize, 0, rl.Color(255, 255, 255, 255))
         rl.draw_text_ex(self.fonts['md'], title, rl.Vector2(mx, my + 40), self.fonts['md'].baseSize, 0, rl.Color(255, 255, 255, 255))
 
-    def _draw_top_strip(self, state, w, h, theme):
+    def _draw_top_strip(self, state, w, h, theme, mouse=None, clicked=False):
         # Telltales
         cx = w / 2
         
@@ -240,14 +244,30 @@ class HUDSurface:
             rl.draw_text_ex(self.fonts['sm'], text, rl.Vector2(px, h / 2 - self.fonts['sm'].baseSize / 2), self.fonts['sm'].baseSize, 0, color)
             px += size + 24
             
-        # Turn signals
-        ts_color = rl.Color(51, 171, 76, 255) if (self.turn_left or self.hazard) else rl.Color(60, 60, 60, 255)
-        rl.draw_circle(int(cx - 300), int(h/2), 10, ts_color)
+        # Turn signals (Directional Arrows with touch/click toggle)
+        now = time.time()
+        flash_on = (int(now * 3) % 2 == 0)
         
-        ts_color_r = rl.Color(51, 171, 76, 255) if (self.turn_right or self.hazard) else rl.Color(60, 60, 60, 255)
-        rl.draw_circle(int(cx + 300), int(h/2), 10, ts_color_r)
+        # Left indicator
+        left_active = (self.turn_left or self.hazard) and flash_on
+        ts_l_col = rl.Color(51, 171, 76, 255) if left_active else rl.Color(60, 60, 60, 255)
+        rect_left_ts = rl.Rectangle(cx - 320, h/2 - 20, 48, 40)
+        rl.draw_text_ex(self.fonts['blg'], "◀", rl.Vector2(rect_left_ts.x, rect_left_ts.y - 6), self.fonts['blg'].baseSize, 0, ts_l_col)
+        
+        # Right indicator
+        right_active = (self.turn_right or self.hazard) and flash_on
+        ts_r_col = rl.Color(51, 171, 76, 255) if right_active else rl.Color(60, 60, 60, 255)
+        rect_right_ts = rl.Rectangle(cx + 280, h/2 - 20, 48, 40)
+        rl.draw_text_ex(self.fonts['blg'], "▶", rl.Vector2(rect_right_ts.x, rect_right_ts.y - 6), self.fonts['blg'].baseSize, 0, ts_r_col)
 
-    def _draw_bottom_strip(self, state, x, y, w, h, theme):
+        # Touch toggles for turn signals
+        if clicked:
+            if rl.check_collision_point_rec(mouse, rect_left_ts):
+                self.turn_left = not self.turn_left
+            elif rl.check_collision_point_rec(mouse, rect_right_ts):
+                self.turn_right = not self.turn_right
+
+    def _draw_bottom_strip(self, state, x, y, w, h, theme, mouse=None, clicked=False):
         pad = 24
         
         # Fuel
@@ -256,14 +276,19 @@ class HUDSurface:
         rl.draw_text_ex(self.fonts['sm'], fuel_str, rl.Vector2(x + pad, y + h/2 - 11), self.fonts['sm'].baseSize, 0, rl.Color(170, 170, 170, 255))
         
         # Drive modes
-        modes = ["ECO", "CRUISE", "SPORT"]
-        active_idx = 1 # CRUISE default
+        modes = ["ECO", "NORMAL", "SPORT"]
+        if not hasattr(self, 'drive_mode_idx'):
+            self.drive_mode_idx = 1 # NORMAL default
         
         # Space them in the center
         mx = w / 2 - (120 * 3 + 24 * 2) / 2
         for i, mode in enumerate(modes):
             m_rect = rl.Rectangle(mx + i * (120 + 24), y + h/2 - 20, 120, 40)
-            if i == active_idx:
+            if clicked and mouse and rl.check_collision_point_rec(mouse, m_rect):
+                self.drive_mode_idx = i
+                state.set('drive_mode', mode)
+
+            if i == self.drive_mode_idx:
                 rl.draw_rectangle_rounded(m_rect, 0.5, 32, rl.Color(51, 171, 76, 255))
                 self._draw_text_centered(self.fonts['bmd'] if 'bmd' in self.fonts else self.fonts['sm'], mode, m_rect.x + 60, m_rect.y + 20, rl.Color(0, 0, 0, 255))
             else:
@@ -275,7 +300,7 @@ class HUDSurface:
         trip_str = f"Trip: {dist:.1f} mi"
         rl.draw_text_ex(self.fonts['sm'], trip_str, rl.Vector2(w - 300, y + h/2 - 11), self.fonts['sm'].baseSize, 0, rl.Color(170, 170, 170, 255))
         
-        time_str = "10:42 AM"
+        time_str = time.strftime("%I:%M %p")
         rl.draw_text_ex(self.fonts['sm'], time_str, rl.Vector2(w - 150, y + h/2 - 11), self.fonts['sm'].baseSize, 0, rl.Color(255, 255, 255, 255))
 
     def handle_key(self, key: int, state, theme):
