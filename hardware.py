@@ -21,6 +21,7 @@ import platform
 import threading
 import time
 import logging
+from typing import Optional, Dict, Any, List
 
 log = logging.getLogger('opencar.hardware')
 
